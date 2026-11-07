@@ -26,8 +26,11 @@ def extraction(claim, excerpt):
 
 def plan():
     agents = ["researcher", "analyst", "verifier", "reporter"]
-    return SupervisorPlan(task_type="competitor_analysis",
-                          steps=[PlanStep(id=f"s{i}", description=a, agent=a) for i, a in enumerate(agents, 1)])
+    return SupervisorPlan(
+        task_type="competitor_analysis",
+        steps=[PlanStep(id=f"s{i}", description=a, agent=a) for i, a in enumerate(agents, 1)],
+        search_queries=["ai interview platforms pricing"],
+    )
 
 
 def analysis():
@@ -152,3 +155,17 @@ async def test_reporter_gets_run_stats():
     reporter_call = next(c for c in llm.calls if c["schema"] == "ReportDraft")
     assert "<run_stats>" in reporter_call["user"]
     assert '"findings_collected": 3' in reporter_call["user"]
+
+async def test_reporter_retries_with_feedback_then_succeeds():
+    llm = FakeLLM(base_responses(
+        VerificationOutput=[verification(unsupported={"gamma"})] * 2,
+        ReportDraft=[
+            draft([fid("acme"), fid("gamma")]),                    # breaks the rule
+            draft([fid("acme")], risk_ids=[fid("gamma")]),         # fixed
+        ],
+    ))
+    out = await run(llm)
+    assert out["status"] == "completed"
+    assert count(llm, "ReportDraft") == 2
+    retry_call = [c for c in llm.calls if c["schema"] == "ReportDraft"][1]
+    assert "not verified" in retry_call["user"]

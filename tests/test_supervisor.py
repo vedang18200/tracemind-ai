@@ -12,11 +12,18 @@ async def run(plan, state=None):
     llm = FakeLLM({"SupervisorPlan": plan})
     return await make_supervisor(llm)(state or new_state("t", "u", "compare platforms"))
 
+QUERIES = ["ai interview platforms pricing", "ai video interview software comparison"]
+
 async def test_valid_plan():
-    out = await run(SupervisorPlan(task_type="competitor_analysis", steps=steps()))
+    out = await run(SupervisorPlan(task_type="competitor_analysis", steps=steps(), search_queries=QUERIES))
     assert len(out["plan"]) == 4
+    assert out["search_queries"] == QUERIES
     assert out["step_count"] == 1
     assert out["current_stage"] == "planning"
+
+async def test_missing_search_queries_fails():
+    out = await run(SupervisorPlan(task_type="competitor_analysis", steps=steps()))
+    assert out["errors"][0]["code"] == "invalid_queries"
 
 async def test_unsupported_task_fails():
     out = await run(SupervisorPlan(task_type="unsupported", steps=[]))

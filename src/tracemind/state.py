@@ -23,7 +23,8 @@ class TraceMindState(TypedDict):
     step_count: int
     research_rounds: int
     errors: Annotated[list[dict], operator.add]
-    research_focus: list[str] #this store what round 2 should look for, after the verfiyer overcview.
+    research_focus: list[str] 
+    search_queries: list[str]
 
 def new_state(task_id: str, user_id: str, request: str) -> TraceMindState:
     return TraceMindState(
@@ -32,4 +33,5 @@ def new_state(task_id: str, user_id: str, request: str) -> TraceMindState:
         verification=[], report_md=None, approval_id=None, status="running",
         current_stage="initialization", step_count=0, research_rounds=0, errors=[],
         research_focus=[],
+        search_queries=[],
     )

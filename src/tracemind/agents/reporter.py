@@ -13,18 +13,34 @@ SECTIONS = [
 ]
 SOURCES_HEADING = "Sources and citations"
 MARKER = re.compile(r"\[\[([^\]]+)\]\]")
+REPORT_ATTEMPTS = 2
 
 
+def _violations(draft: ReportDraft, findings: dict, status: dict) -> list[tuple[str, str]]:
+    if [s.heading for s in draft.sections] != SECTIONS:
+        return [("bad_structure", f"Sections must be exactly these, in order: {SECTIONS}")]
+    out: list[tuple[str, str]] = []
+    for sec in draft.sections:
+        if not sec.body.strip():
+            out.append(("empty_section", f"Section '{sec.heading}' is empty"))
+        for fid in MARKER.findall(sec.body):
+            if fid not in findings:
+                out.append(("invalid_citation", f"Unknown finding id {fid} in '{sec.heading}'"))
+            elif status.get(fid) != "verified" and sec.heading != RISKS:
+                out.append(("unverified_claim_outside_risks",
+                            f"{fid} is not verified; it may only be cited in '{RISKS}', not '{sec.heading}'"))
+    return out
 
 
 def make_reporter(llm: LLM):
-    system = load_prompt("v1_reporter")
+    system = load_prompt("v3_reporter")
 
     @node("reporting")
     async def reporter(state):
         findings = {f.id: f for f in state["findings"]}
         sources = {s.id: s for s in state["sources"]}
         status = {r.finding_id: r.status for r in state["verification"]}
+
         stats = {
             "sources_collected": len(state["sources"]),
             "findings_collected": len(state["findings"]),
@@ -34,35 +50,38 @@ def make_reporter(llm: LLM):
             "research_rounds": state["research_rounds"],
         }
 
-        findings_payload = json.dumps([
-            {"id": f.id, "claim": f.claim, "verification": status.get(f.id, "unverified"),
-             "source_title": sources[f.source_id].title if f.source_id in sources else None}
-            for f in findings.values()
-        ], indent=2)
+        def view(f):
+            s = sources.get(f.source_id)
+            return {"id": f.id, "claim": f.claim, "verification": status.get(f.id, "unverified"),
+                    "source_title": s.title if s else None}
 
+        verified = [view(f) for f in findings.values() if status.get(f.id) == "verified"]
+        unverified = [view(f) for f in findings.values() if status.get(f.id) != "verified"]
 
-        draft = await llm.structured(
-            system=system,
-            user=(f"Task: {state['user_request']}\n\n<run_stats>\n{json.dumps(stats, indent=2)}\n</run_stats>\n\n"
-                  f"<findings>\n{findings_payload}\n</findings>\n\n"
-                  f"<analysis>\n{json.dumps(state['analysis'], indent=2)}\n</analysis>"),
-            schema=ReportDraft,
+        base_user = (
+            f"Task: {state['user_request']}\n\n"
+            f"<run_stats>\n{json.dumps(stats)}\n</run_stats>\n\n"
+            f"<verified_findings>\n{json.dumps(verified, indent=2)}\n</verified_findings>\n\n"
+            f"<unverified_findings>\n{json.dumps(unverified, indent=2)}\n</unverified_findings>\n\n"
+            f"<analysis>\n{json.dumps(state['analysis'], indent=2)}\n</analysis>"
         )
 
-        if [s.heading for s in draft.sections] != SECTIONS:
-            return fail(state, "reporting", "bad_structure", "Report sections missing or out of order")
+        user = base_user
+        draft, violations = None, []
+        for _ in range(REPORT_ATTEMPTS):
+            draft = await llm.structured(system=system, user=user, schema=ReportDraft)
+            violations = _violations(draft, findings, status)
+            if not violations:
+                break
+            user = (base_user + "\n\nYour previous draft was rejected for these reasons:\n- "
+                    + "\n- ".join(m for _, m in violations[:8])
+                    + "\nRewrite the full report and fix every issue.")
 
-        for sec in draft.sections:
-            if not sec.body.strip():
-                return fail(state, "reporting", "empty_section", f"Empty section: {sec.heading}")
-            for fid in MARKER.findall(sec.body):
-                if fid not in findings:
-                    return fail(state, "reporting", "invalid_citation", f"Unknown finding id: {fid}")
-                if status.get(fid) != "verified" and sec.heading != RISKS:
-                    return fail(state, "reporting", "unverified_claim_outside_risks",
-                                f"{fid} is not verified but cited in '{sec.heading}'")
+        if violations:
+            code, msg = violations[0]
+            return fail(state, "reporting", code, msg)
 
-        numbers: dict[str, int] = {}   # source_id -> citation number, by first use
+        numbers: dict[str, int] = {}
 
         def number(m: re.Match) -> str:
             sid = findings[m.group(1)].source_id

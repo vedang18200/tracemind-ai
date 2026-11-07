@@ -1,4 +1,3 @@
-# schemas.py
 from datetime import datetime
 from typing import Literal
 
@@ -50,7 +49,13 @@ class ExtractedFinding(StrictModel):
     confidence: float = Field(ge=0, le=1)
 
 class PageExtraction(StrictModel):
-    findings: list[ExtractedFinding] = Field(max_length=10)
+    findings: list[ExtractedFinding]
+
+
+class SupervisorPlan(StrictModel):
+    task_type: Literal["competitor_analysis", "unsupported"]
+    steps: list[PlanStep] = Field(max_length=12)
+    search_queries: list[str] = Field(default_factory=list, max_length=5)
 
 class PlatformSummary(StrictModel):
     name: str

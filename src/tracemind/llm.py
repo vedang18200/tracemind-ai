@@ -58,6 +58,14 @@ class AnthropicLLM:
                 tools=[tool],
                 tool_choice={"type": "tool", "name": "respond"},
             )
+            u = getattr(resp, "usage", None)
+            if u is not None:
+                self.usage["input"] += u.input_tokens
+                self.usage["output"] += u.output_tokens
+            if resp.stop_reason == "max_tokens":
+                raise RuntimeError(
+                    f"output truncated for {schema.__name__} (max_tokens={settings.llm_max_tokens})"
+                )
             block = next((b for b in resp.content if b.type == "tool_use"), None)
             if block is None:
                 last_err = RuntimeError("model returned no tool call")

@@ -19,6 +19,10 @@ src/tracemind/agents/reporter.py
 src/tracemind/agents/researcher.py
 src/tracemind/agents/supervisor.py
 src/tracemind/agents/verifier.py
+src/tracemind/mcp_servers/__init__.py
+src/tracemind/mcp_servers/web_server.py
+src/tracemind/security/__init__.py
+src/tracemind/security/url_policy.py
 src/tracemind/tools/__init__.py
 src/tracemind/tools/stubs.py
 tests/test_analyst.py
@@ -27,4 +31,5 @@ tests/test_researcher.py
 tests/test_routing.py
 tests/test_state.py
 tests/test_supervisor.py
+tests/test_url_policy.py
 tests/test_verifier.py

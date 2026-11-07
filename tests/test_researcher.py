@@ -2,6 +2,44 @@ from tracemind.agents.researcher import make_researcher
 from tracemind.llm import FakeLLM
 from tracemind.schemas import ExtractedFinding, PageExtraction
 from tracemind.state import new_state
+from tracemind.tools.stubs import search_web
+from tracemind.config import settings
+
+
+async def test_extraction_failure_skips_page_not_run():
+    llm = FakeLLM({"PageExtraction": [          # only 2 responses; the 3rd call raises
+        ext("Acme Pro is $99/month", "Pro plan: $99/month"),
+        ext("BetaHire has ATS sync", "ATS sync"),
+    ]})
+    out = await make_researcher(llm)(new_state("t", "u", "x"))
+    assert len(out["findings"]) == 2
+    assert len(out["sources"]) == 2
+    assert any(e["code"] == "extraction_failed" for e in out["errors"])
+
+
+async def test_overlong_extraction_truncated_not_rejected():
+    many = PageExtraction(findings=[
+        ExtractedFinding(claim=f"claim {i}", excerpt="Pro plan: $99/month", confidence=0.5)
+        for i in range(11)
+    ])
+    llm = FakeLLM({"PageExtraction": [many, PageExtraction(findings=[]), PageExtraction(findings=[])]})
+    out = await make_researcher(llm)(new_state("t", "u", "x"))
+    assert len(out["findings"]) == settings.max_findings_per_page
+
+
+async def test_uses_supervisor_queries_and_dedupes_urls():
+    seen = []
+
+    async def spy_search(q):
+        seen.append(q)
+        return await search_web(q)
+
+    state = new_state("t", "u", "x")
+    state["search_queries"] = ["q one", "q two"]
+    llm = FakeLLM({"PageExtraction": [PageExtraction(findings=[])] * 3})
+    out = await make_researcher(llm, search=spy_search)(state)
+    assert seen == ["q one", "q two"]
+    assert len(out["sources"]) == 3          # same 3 URLs from both queries, fetched once each
 
 
 def ext(claim, excerpt, conf=0.9):
@@ -76,3 +114,56 @@ async def test_page_content_is_wrapped_as_data():
     await make_researcher(llm)(state)
     assert all("<page url=" in c["user"] for c in llm.calls)
     assert "untrusted" in llm.calls[0]["system"].lower()
+
+async def test_search_failure_fails_cleanly():
+    async def bad_search(q):
+        raise TimeoutError("boom")
+    out = await make_researcher(FakeLLM({}), search=bad_search)(new_state("t", "u", "x"))
+    assert out["status"] == "failed"
+    assert out["errors"][0]["code"] == "search_failed"
+
+async def test_extraction_failure_skips_page_not_run():
+    llm = FakeLLM({"PageExtraction": [          # only 2 responses; the 3rd call raises
+        ext("Acme Pro is $99/month", "Pro plan: $99/month"),
+        ext("BetaHire has ATS sync", "ATS sync"),
+    ]})
+    out = await make_researcher(llm)(new_state("t", "u", "x"))
+    assert len(out["findings"]) == 2
+    assert len(out["sources"]) == 2
+    assert any(e["code"] == "extraction_failed" for e in out["errors"])
+
+
+async def test_overlong_extraction_truncated_not_rejected():
+    many = PageExtraction(findings=[
+        ExtractedFinding(claim=f"claim {i}", excerpt="Pro plan: $99/month", confidence=0.5)
+        for i in range(11)
+    ])
+    llm = FakeLLM({"PageExtraction": [many, PageExtraction(findings=[]), PageExtraction(findings=[])]})
+    out = await make_researcher(llm)(new_state("t", "u", "x"))
+    assert len(out["findings"]) == settings.max_findings_per_page
+
+
+async def test_uses_supervisor_queries_and_dedupes_urls():
+    seen = []
+
+    async def spy_search(q):
+        seen.append(q)
+        return await search_web(q)
+
+    state = new_state("t", "u", "x")
+    state["search_queries"] = ["q one", "q two"]
+    llm = FakeLLM({"PageExtraction": [PageExtraction(findings=[])] * 3})
+    out = await make_researcher(llm, search=spy_search)(state)
+    assert seen == ["q one", "q two"]
+    assert len(out["sources"]) == 3          # same 3 URLs from both queries, fetched once each
+
+async def test_total_findings_capped_keeps_highest_confidence(monkeypatch):
+    monkeypatch.setattr(settings, "max_total_findings", 2)
+    llm = FakeLLM({"PageExtraction": [
+        ext("Acme Pro is $99/month", "Pro plan: $99/month", 0.9),
+        ext("BetaHire has ATS sync", "ATS sync", 0.5),
+        ext("Gamma is $149/month", "$149/month", 0.7),
+    ]})
+    out = await make_researcher(llm)(new_state("t", "u", "x"))
+    assert len(out["findings"]) == 2
+    assert min(f.confidence for f in out["findings"]) == 0.7

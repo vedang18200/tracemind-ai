@@ -53,10 +53,8 @@ def make_verifier(llm: LLM):
             results.append(r)
 
         claims = {f.id: f.claim for f in findings}
-        focus = [
-            f"find stronger evidence for: {claims[r.finding_id]}"
-            for r in results if r.status != "verified"
-        ]
+        focus = [claims[r.finding_id] for r in results if r.status != "verified"]
+        
         return {"verification": results, "research_focus": focus}
 
     return verifier

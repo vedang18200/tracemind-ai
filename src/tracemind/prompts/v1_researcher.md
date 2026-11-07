@@ -7,3 +7,5 @@ Rules:
 - For each claim, copy a short excerpt VERBATIM from the page that supports it.
 - confidence is your estimate (0 to 1) of how clearly the excerpt supports the claim.
 - If the page has nothing relevant, return an empty findings list.
+- Return at most 6 findings, choosing the most relevant to the task.
+- Skip claims about products outside the task's category, even if the page lists them alongside relevant ones.

@@ -24,7 +24,7 @@ def test_new_state_has_all_keys():
     expected = {
         "schema_version", "task_id", "user_id", "user_request", "plan", "findings",
         "sources", "analysis", "verification", "report_md", "approval_id", "status",
-        "current_stage", "step_count", "research_rounds", "errors","research_focus",
+        "current_stage", "step_count", "research_rounds", "errors","research_focus","search_queries",
     }
     assert set(s.keys()) == expected
     assert s["schema_version"] == SCHEMA_VERSION

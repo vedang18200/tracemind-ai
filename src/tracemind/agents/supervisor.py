@@ -1,10 +1,10 @@
-# agents/supervisor.py
 from tracemind.agents.common import fail, load_prompt, node
 from tracemind.llm import LLM
 from tracemind.schemas import SupervisorPlan
 
+
 def make_supervisor(llm: LLM):
-    system = load_prompt("v1_supervisor")
+    system = load_prompt("v2_supervisor")
 
     @node("planning")
     async def supervisor(state):
@@ -19,6 +19,11 @@ def make_supervisor(llm: LLM):
         if len(ids) != len(set(ids)):
             return fail(state, "planning", "duplicate_step_ids", "Plan step ids must be unique")
 
-        return {"plan": plan.steps}
+        queries = [q.strip() for q in plan.search_queries if q.strip()]
+        if not queries or len(queries) > 5 or any(len(q) > 200 for q in queries):
+            return fail(state, "planning", "invalid_queries",
+                        "Need 1-5 search queries, each under 200 chars")
+
+        return {"plan": plan.steps, "search_queries": queries}
 
     return supervisor
