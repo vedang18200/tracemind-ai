@@ -39,5 +39,8 @@ class Settings(BaseSettings):
     mcp_rate_limit_per_minute: int = 30        # per client IP
     mcp_global_rate_limit_per_minute: int = 120  # whole instance; protects the search quota
     mcp_trust_proxy: bool = False              # read client IP from X-Forwarded-For (behind a load balancer)
+    mcp_client_ip_header: str = ""            # header set by the edge proxy, e.g. cf-connecting-ip on Render
+    render_external_hostname: str = ""        # injected by Render; auto-added to the Host allow-list
+    search_daily_limit: int = 0                # max search_web calls per UTC day per process; 0 = unlimited
 
 settings = Settings()

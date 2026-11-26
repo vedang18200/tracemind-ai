@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir . \
 USER app
 
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"MCP_HTTP_PORT\"]}/healthz')"
+HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request,os; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % (os.environ.get('PORT') or os.environ['MCP_HTTP_PORT']))"
 CMD ["python", "-m", "tracemind.mcp_servers.http_app"]

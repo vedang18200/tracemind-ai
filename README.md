@@ -2,7 +2,9 @@
 
 **A multi-agent research system that turns a question into a cited competitor-analysis report, with tools served over MCP and a human approval gate before anything leaves the system.**
 
-> 🎥 **Demo video:** _add link_ · 🔌 **Live MCP server:** `https://<your-host>/mcp` · 💻 **Stack:** Python · LangGraph · MCP · Postgres · Docker
+> **Demo video:** _coming soon_  
+> **Live MCP server:** _coming soon_  
+> **Stack:** Python, LangGraph, MCP, Postgres, Docker
 
 Ask: _"Research the top five AI interview platforms, compare their pricing and features, identify market gaps, and generate a competitor analysis report with sources."_
 
@@ -14,33 +16,33 @@ TraceMind plans the work, searches and reads the web through its own MCP server,
 
 ```mermaid
 flowchart LR
-    U([User request]) --> V[validate]
-    V --> S[Supervisor<br/><sub>plan + search queries</sub>]
-    S --> R[Researcher]
-    R --> A[Analyst<br/><sub>platforms, pricing, gaps</sub>]
-    A --> VF[Verifier]
-    VF -->|unverified ratio > 30%<br/>and rounds left| R
-    VF --> RP[Reporter<br/><sub>cited Markdown</sub>]
-    RP --> OV[output validation]
-    OV -->|deliver_to set| P[propose action]
-    OV --> F([finalize])
-    P --> G{{Approval gate<br/>interrupt}}
-    G -->|approved| X[execute send]
-    G -->|rejected| F
+    U(["User request"]) --> V["Validate request"]
+    V --> S["Supervisor: plan + search queries"]
+    S --> R["Researcher"]
+    R --> A["Analyst: platforms, pricing, gaps"]
+    A --> VF["Verifier"]
+    VF -- "too many unverified claims" --> R
+    VF --> RP["Reporter: cited Markdown"]
+    RP --> OV["Output validation"]
+    OV -- "no delivery" --> F(["Finalize"])
+    OV -- "deliver_to set" --> P["Propose send action"]
+    P --> G{"Approval gate (interrupt)"}
+    G -- "approved" --> X["Execute send"]
+    G -- "rejected" --> F
     X --> F
 
-    subgraph MCP["MCP server (stdio or Streamable HTTP)"]
-        T1[search_web]
-        T2[fetch_page<br/><sub>SSRF-guarded</sub>]
+    subgraph MCP ["MCP server: stdio or Streamable HTTP"]
+        T1["search_web"]
+        T2["fetch_page (SSRF-guarded)"]
     end
-    R <-->|MCPToolClient<br/>policy · schema check · retries · audit| MCP
+    R -- "MCPToolClient: policy, schema check, retries, audit" --> MCP
 
-    subgraph PG[(Postgres)]
-        CK[LangGraph checkpoints]
-        AP[approvals · outbox · audit log]
+    subgraph PG ["Postgres"]
+        CK[("LangGraph checkpoints")]
+        AP[("Approvals, outbox, audit log")]
     end
-    G -.-> PG
-    X -.-> PG
+    G -.-> CK
+    X -.-> AP
 ```
 
 | Layer | What it does |
@@ -70,7 +72,7 @@ npx @modelcontextprotocol/inspector
 ```
 Choose transport **Streamable HTTP**, URL `https://<your-host>/mcp`, and add the header `Authorization: Bearer <token>` if the server has a token.
 
-**Cursor** (`~/.cursor/mcp.json`) / **VS Code** (`.vscode/mcp.json`, key `servers` + `"type": "http"`):
+**Cursor** (`~/.cursor/mcp.json`):
 ```json
 {
   "mcpServers": {
@@ -81,6 +83,21 @@ Choose transport **Streamable HTTP**, URL `https://<your-host>/mcp`, and add the
   }
 }
 ```
+
+**VS Code** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "tracemind": {
+      "type": "http",
+      "url": "https://<your-host>/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Drop the `headers` block if the server runs without a token.
 
 **Claude Desktop:** Settings → Connectors → add a custom connector with the URL (for an open demo server), or bridge it with `npx mcp-remote https://<your-host>/mcp`.
 
@@ -126,7 +143,9 @@ docker run -p 8000:8000 -e TAVILY_API_KEY=... -e MCP_AUTH_TOKEN=... \
 | `MCP_RATE_LIMIT_PER_MINUTE` / `MCP_GLOBAL_RATE_LIMIT_PER_MINUTE` | Per-IP and whole-instance limits. The global cap protects your search-API quota. |
 | `MCP_TRUST_PROXY` | `true` behind a load balancer so the real client IP (last `X-Forwarded-For` hop) is rate-limited. |
 
-Hosting options: any container host works (Render, Fly.io, AWS App Runner, ECS Fargate). Rate limits are in-memory per instance; when running several replicas, also add throttling at the gateway or load balancer.
+**One-click on Render (free):** the repo ships a `render.yaml` blueprint. Dashboard → New → Blueprint → select this repo → paste `TAVILY_API_KEY`. Render's hostname, port and client-IP header are picked up automatically, and `SEARCH_DAILY_LIMIT` keeps a public demo inside the search API's free quota.
+
+Other hosts: any container host works (Render, Fly.io, AWS App Runner, ECS Fargate). Rate limits are in-memory per instance; when running several replicas, also add throttling at the gateway or load balancer.
 
 ## Project layout
 

@@ -2,6 +2,7 @@
 import httpx
 from bs4 import BeautifulSoup
 from mcp.server.fastmcp import FastMCP
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from tracemind.config import settings
@@ -10,6 +11,21 @@ from tracemind.security.url_policy import pinned_transport, validate_url
 mcp = FastMCP("tracemind-web")
 
 ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
+
+# Per-process daily budget for the paid/free-tier search API. Resets on restart, so it is a
+# safety net for a public demo, not exact accounting.
+_search_budget = {"day": "", "used": 0}
+
+
+def _take_search_budget() -> None:
+    if settings.search_daily_limit <= 0:
+        return
+    today = datetime.now(timezone.utc).date().isoformat()
+    if _search_budget["day"] != today:
+        _search_budget.update(day=today, used=0)
+    if _search_budget["used"] >= settings.search_daily_limit:
+        raise RuntimeError("daily search limit reached for this demo server; try again tomorrow")
+    _search_budget["used"] += 1
 
 
 @mcp.tool()
@@ -20,6 +36,7 @@ async def search_web(query: str, max_results: int = 5) -> dict:
     if not query.strip() or len(query) > 500:
         raise ValueError("query must be 1-500 characters")
     max_results = max(1, min(max_results, 10))
+    _take_search_budget()
 
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(

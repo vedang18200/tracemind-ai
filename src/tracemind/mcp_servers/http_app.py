@@ -62,16 +62,23 @@ class RateLimitMiddleware:
     MAX_TRACKED_CLIENTS = 10_000
 
     def __init__(self, app, *, per_client: int, global_limit: int, trust_proxy: bool = False,
-                 clock=time.monotonic):
+                 client_ip_header: str = "", clock=time.monotonic):
         self.app = app
         self.per_client = per_client
         self.global_limit = global_limit
         self.trust_proxy = trust_proxy
+        self.client_ip_header = client_ip_header.lower().encode()
         self.clock = clock
         self.clients: dict[str, deque[float]] = {}
         self.all: deque[float] = deque()
 
     def _client_ip(self, scope) -> str:
+        if self.client_ip_header:
+            # Edge proxy overwrites this header (e.g. Cloudflare's CF-Connecting-IP on Render),
+            # so callers can't spoof it. Only enable when the app is reachable solely via that proxy.
+            ip = dict(scope["headers"]).get(self.client_ip_header, b"").decode("latin-1").strip()
+            if ip:
+                return ip
         if self.trust_proxy:
             xff = dict(scope["headers"]).get(b"x-forwarded-for", b"").decode("latin-1")
             if xff:
@@ -115,6 +122,8 @@ class RateLimitMiddleware:
 
 def _transport_security() -> TransportSecuritySettings:
     hosts = [h.strip() for h in settings.mcp_allowed_hosts if h.strip()]
+    if settings.render_external_hostname and settings.render_external_hostname not in hosts:
+        hosts.append(settings.render_external_hostname)
     if hosts:
         return TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
@@ -157,14 +166,18 @@ def create_app():
         per_client=settings.mcp_rate_limit_per_minute,
         global_limit=settings.mcp_global_rate_limit_per_minute,
         trust_proxy=settings.mcp_trust_proxy,
+        client_ip_header=settings.mcp_client_ip_header,
     )
 
 
 def main() -> None:
+    import os
+
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
-    uvicorn.run(create_app(), host=settings.mcp_http_host, port=settings.mcp_http_port,
+    port = int(os.environ.get("PORT") or settings.mcp_http_port)   # PaaS hosts (Render) inject PORT
+    uvicorn.run(create_app(), host=settings.mcp_http_host, port=port,
                 proxy_headers=False)   # client IP handling is done by RateLimitMiddleware
 
 
