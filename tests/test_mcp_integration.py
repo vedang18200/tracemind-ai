@@ -5,7 +5,7 @@ from tracemind.mcp_client import ToolError, connect_stdio
 
 async def test_real_server_lists_only_expected_tools():
     async with connect_stdio() as client:
-        assert sorted(client.schemas) == ["fetch_page", "search_web"]
+        assert sorted(client.schemas) == ["fetch_page", "search_web", "verify_citation"]
 
 
 @pytest.mark.parametrize("url", [

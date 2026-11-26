@@ -5,6 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
+from tracemind.citations import check_quote
 from tracemind.config import settings
 from tracemind.security.url_policy import pinned_transport, validate_url
 
@@ -101,6 +102,26 @@ async def fetch_page(url: str) -> dict:
         text, truncated = text[: settings.fetch_max_chars], True
 
     return {"url": current, "title": title, "text": text, "truncated": truncated}
+
+
+@mcp.tool()
+async def verify_citation(url: str, quote: str) -> dict:
+    """Check whether a quoted passage really appears on a web page, so an AI can fact-check
+    its own citations. Fetches the page (same SSRF protections as fetch_page) and returns
+    {"url", "title", "status", "similarity", "context", ...} where status is one of:
+    exact_match, normalized_match (only case/quote-style/dash differences),
+    close_match (similar but altered or paraphrased; see closest_passage), not_found."""
+    quote = quote.strip()
+    if not 10 <= len(quote) <= 1000:
+        raise ValueError("quote must be 10-1000 characters")
+
+    page = await fetch_page(url)
+    result = {"url": page["url"], "title": page["title"], "quote": quote,
+              **check_quote(page["text"], quote)}
+    if result["status"] in ("close_match", "not_found") and page["truncated"]:
+        result["note"] = (f"page text was truncated to {settings.fetch_max_chars} characters; "
+                          "the quote may appear further down the page")
+    return result
 
 
 if __name__ == "__main__":

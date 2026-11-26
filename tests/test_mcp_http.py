@@ -103,7 +103,7 @@ def http_server():
 
 async def test_http_server_lists_tools(http_server):
     async with connect_http(f"{http_server}/mcp", token="test-token") as client:
-        assert sorted(client.schemas) == ["fetch_page", "search_web"]
+        assert sorted(client.schemas) == ["fetch_page", "search_web", "verify_citation"]
 
 
 async def test_http_server_blocks_ssrf(http_server):
@@ -149,3 +149,11 @@ async def test_search_daily_budget(monkeypatch):
     web_server._take_search_budget()
     with pytest.raises(RuntimeError, match="daily search limit"):
         web_server._take_search_budget()
+
+
+async def test_http_verify_citation_blocks_ssrf(http_server):
+    async with connect_http(f"{http_server}/mcp", token="test-token") as client:
+        with pytest.raises(ToolError) as e:
+            await client.call("verifier", "verify_citation",
+                              {"url": "http://127.0.0.1/", "quote": "anything long enough"})
+        assert e.value.code == "tool_error" and "non-public" in e.value.message

@@ -49,7 +49,7 @@ flowchart LR
 |---|---|
 | **Orchestration** (`graph.py`) | LangGraph state machine with conditional routing, a bounded research loop (`max_research_rounds`) and a global step limit so a run can't spin forever. |
 | **Agents** (`agents/`) | Supervisor, Researcher, Analyst, Verifier, Reporter. Each returns **Pydantic-validated structured output**; invalid output is retried with the validation error fed back. Prompts are versioned files (`prompts/v1_*.md` … `v3_*.md`). |
-| **MCP server** (`mcp_servers/`) | `search_web` and `fetch_page` exposed as MCP tools. Runs over **stdio** for local use or **Streamable HTTP** for hosting, the same tools either way. |
+| **MCP server** (`mcp_servers/`) | `search_web`, `fetch_page` and `verify_citation` exposed as MCP tools. Runs over **stdio** for local use or **Streamable HTTP** for hosting, the same tools either way. |
 | **MCP client** (`mcp_client.py`) | Per-agent tool allow-list, JSON-schema validation of arguments before the call, timeout + retry with backoff for transient failures only, and a per-invocation audit record (tool, agent, status, latency, attempts). |
 | **Human-in-the-loop** (`approvals.py`, `agents/delivery.py`) | Outbound actions become an approval row pinned to a **SHA-256 of the exact report**. The graph `interrupt()`s and resumes from a Postgres checkpoint; execution re-checks the DB, so a tampered report or replayed decision is refused. |
 
@@ -66,15 +66,43 @@ flowchart LR
 
 **Live endpoint:** `https://tracemind-mcp.onrender.com/mcp` (open demo, rate limited)
 
-It exposes two tools: `search_web(query, max_results)` and `fetch_page(url)`. The server runs on Render's free tier, so the first request after an idle period can take 30-60 seconds while it wakes up.
+It exposes three tools:
 
-**MCP Inspector** (no install):
+| Tool | What it does |
+|---|---|
+| `verify_citation(url, quote)` | **Fact-checks a citation.** Fetches the page and reports `exact_match`, `normalized_match` (only case, quote-style or dash differences), `close_match` (similar but altered; returns what the page actually says) or `not_found`. Add the server to your AI assistant and it can check its own quotes against the source. |
+| `fetch_page(url)` | Fetches a public page and returns its title and readable text, behind SSRF and DNS-rebinding protection. |
+| `search_web(query, max_results)` | Web search (Tavily). | The server runs on Render's free tier, so the first request after an idle period can take 30-60 seconds while it wakes up.
+
+**Quickest: curl** (nothing to install). The server is stateless, so each call stands alone:
+```bash
+# List the tools
+curl -s -X POST https://tracemind-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+```bash
+# Try the SSRF guard: ask it to read the cloud metadata endpoint
+curl -s -X POST https://tracemind-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch_page","arguments":{"url":"http://169.254.169.254/latest/meta-data/"}}}'
+# -> "isError": true, "non-public address: 169.254.169.254"
+```
+```bash
+# Fact-check a citation: the number was changed, so it comes back as close_match with the real sentence
+curl -s -X POST https://tracemind-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify_citation","arguments":{"url":"https://docs.python.org/3/tutorial/index.html","quote":"Python is a hard to learn, powerful programming language."}}}'
+```
+
+**MCP Inspector** (visual UI, needs Node.js):
 ```bash
 npx @modelcontextprotocol/inspector
 ```
-Choose transport **Streamable HTTP** and URL `https://tracemind-mcp.onrender.com/mcp`, then Connect → Tools → List Tools.
+Choose transport **Streamable HTTP**, URL `https://tracemind-mcp.onrender.com/mcp`, connection type **Via Proxy**, then Connect → Tools → List Tools.
 
 Things to try:
+- `verify_citation` with `https://docs.python.org/3/tutorial/index.html` and the quote `Python is an easy to learn, powerful programming language.`, then change a word and run it again
 - `fetch_page` with `https://example.com/`: returns the page title and text
 - `fetch_page` with `http://169.254.169.254/latest/meta-data/`: blocked (cloud metadata / SSRF)
 - `fetch_page` with `http://127.0.0.1/` or `file:///etc/passwd`: blocked

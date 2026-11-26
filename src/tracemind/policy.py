@@ -1,5 +1,6 @@
 AGENT_TOOLS: dict[str, set[str]] = {
     "researcher": {"search_web", "fetch_page"},
+    "verifier": {"verify_citation"},
 }
 
 # Never callable through the generic tool client.
