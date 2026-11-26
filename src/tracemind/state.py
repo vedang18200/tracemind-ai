@@ -1,4 +1,4 @@
-# state.py
+"""State for the TraceMind application."""
 import operator
 from typing import Annotated, Literal, TypedDict
 

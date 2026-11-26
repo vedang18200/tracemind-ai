@@ -1,24 +1,22 @@
-# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
-# Deploys only the MCP server (search_web + fetch_page). No LLM key is needed or used.
 services:
   - type: web
     name: tracemind-mcp
     runtime: docker
-    plan: free                  # sleeps after ~15 min idle; first request then takes ~30-60s
+    plan: free                  
     region: singapore
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - key: TAVILY_API_KEY
-        sync: false             # entered in the dashboard, never stored in git
-      # Open demo: no token, protected by limits below. To lock it down, add MCP_AUTH_TOKEN in the dashboard.
+        sync: false             
+      
       - key: MCP_CLIENT_IP_HEADER
-        value: cf-connecting-ip # Render sits behind Cloudflare; this header can't be spoofed by callers
+        value: cf-connecting-ip 
       - key: MCP_RATE_LIMIT_PER_MINUTE
         value: "20"
       - key: MCP_GLOBAL_RATE_LIMIT_PER_MINUTE
         value: "60"
       - key: SEARCH_DAILY_LIMIT
-        value: "30"             # keeps a public demo inside Tavily's free monthly quota
-      # RENDER_EXTERNAL_HOSTNAME and PORT are injected by Render and picked up automatically.
+        value: "30"             
+      

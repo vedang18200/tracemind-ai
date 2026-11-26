@@ -1,9 +1,3 @@
-"""Hosted entry point: serves the same tools as web_server.py over MCP Streamable HTTP.
-
-Run locally:   python -m tracemind.mcp_servers.http_app
-Clients:       POST http://<host>:<port>/mcp   (Claude Desktop, Cursor, VS Code, MCP Inspector)
-Health check:  GET  /healthz
-"""
 import hmac
 import json
 import logging
@@ -52,12 +46,6 @@ class BearerTokenMiddleware:
 
 
 class RateLimitMiddleware:
-    """Sliding 60s window, per client IP plus one global bucket.
-
-    In-memory, so it is per process: fine for a single container demo. On Lambda or with
-    several replicas, use API Gateway / load balancer throttling instead.
-    """
-
     WINDOW = 60.0
     MAX_TRACKED_CLIENTS = 10_000
 

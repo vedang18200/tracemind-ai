@@ -18,17 +18,15 @@ def _is_public(ip: str) -> bool:
     addr = ipaddress.ip_address(ip)
     if addr.version == 6 and addr.ipv4_mapped:
         addr = addr.ipv4_mapped
-    return addr.is_global   # False for private, loopback, link-local, CGNAT, reserved
+    return addr.is_global   
 
 
 async def _getaddrinfo(host: str, port: int) -> list[str]:
-    """Resolver hook (tests replace this to simulate DNS rebinding)."""
     infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
     return [i[4][0] for i in infos]
 
 
 async def resolve_public_ips(host: str, port: int) -> list[str]:
-    """Resolve host and return its IPs, or raise if ANY of them is non-public."""
     host = host.strip("[]")
     try:
         ips = [str(ipaddress.ip_address(host))]          # literal IP
@@ -46,8 +44,6 @@ async def resolve_public_ips(host: str, port: int) -> list[str]:
 
 
 async def validate_url(url: str) -> str:
-    """Static checks plus a DNS pre-check for clear errors. NOT sufficient on its own:
-    the connection must go through pinned_transport() so the IP is re-checked at connect time."""
     try:
         parts = urlparse(url)
         port = parts.port
@@ -68,14 +64,6 @@ async def validate_url(url: str) -> str:
 
 
 class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
-    """Resolves and validates at connect time, then dials the vetted IP literal.
-
-    This closes the DNS-rebinding gap: validate_url() and the socket no longer resolve
-    the name separately, so a domain can't answer "public" to the check and "private"
-    to the connection. TLS is unaffected: httpcore still uses the original hostname
-    for SNI and certificate verification.
-    """
-
     def __init__(self, inner: httpcore.AsyncNetworkBackend | None = None):
         self.inner = inner or httpcore.AnyIOBackend()
 
@@ -99,11 +87,7 @@ class PinnedNetworkBackend(httpcore.AsyncNetworkBackend):
 
 
 def pinned_transport(inner: httpcore.AsyncNetworkBackend | None = None) -> httpx.AsyncHTTPTransport:
-    """httpx transport whose every connection goes through PinnedNetworkBackend.
-
-    httpx has no public hook for the network backend, so we swap the pool it builds.
-    tests/test_url_policy.py asserts this wiring so an httpx upgrade can't silently undo it.
-    """
+    
     transport = httpx.AsyncHTTPTransport(trust_env=False)
     transport._pool = httpcore.AsyncConnectionPool(
         ssl_context=httpx.create_ssl_context(),

@@ -30,5 +30,4 @@ async def validate_output(state):
 
 @node("completed")
 async def finalize(state):
-    # Phase 3: the approval interrupt goes right before this node.
     return {"status": "completed"}

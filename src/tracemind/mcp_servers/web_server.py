@@ -1,4 +1,3 @@
-# mcp_servers/__init__.py stays empty
 import httpx
 from bs4 import BeautifulSoup
 from mcp.server.fastmcp import FastMCP
@@ -13,8 +12,6 @@ mcp = FastMCP("tracemind-web")
 
 ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "text/plain"}
 
-# Per-process daily budget for the paid/free-tier search API. Resets on restart, so it is a
-# safety net for a public demo, not exact accounting.
 _search_budget = {"day": "", "used": 0}
 
 
@@ -31,7 +28,6 @@ def _take_search_budget() -> None:
 
 @mcp.tool()
 async def search_web(query: str, max_results: int = 5) -> dict:
-    """Search the public web. Returns {"hits": [{"url", "title", "snippet"}]}."""
     if not settings.tavily_api_key:
         raise RuntimeError("TAVILY_API_KEY is not set")
     if not query.strip() or len(query) > 500:
@@ -56,11 +52,10 @@ async def search_web(query: str, max_results: int = 5) -> dict:
 
 @mcp.tool()
 async def fetch_page(url: str) -> dict:
-    """Fetch a public web page. Returns {"url", "title", "text", "truncated"}."""
     current = url
     async with httpx.AsyncClient(
-        transport=pinned_transport(),     # re-validates the IP at connect time (DNS rebinding)
-        trust_env=False,                  # no env proxies: they would bypass the pinned transport
+        transport=pinned_transport(),     
+        trust_env=False,                  
         follow_redirects=False,
         timeout=settings.fetch_timeout_seconds,
         headers={"User-Agent": "TraceMind/0.1 (research bot)"},
@@ -106,11 +101,6 @@ async def fetch_page(url: str) -> dict:
 
 @mcp.tool()
 async def verify_citation(url: str, quote: str) -> dict:
-    """Check whether a quoted passage really appears on a web page, so an AI can fact-check
-    its own citations. Fetches the page (same SSRF protections as fetch_page) and returns
-    {"url", "title", "status", "similarity", "context", ...} where status is one of:
-    exact_match, normalized_match (only case/quote-style/dash differences),
-    close_match (similar but altered or paraphrased; see closest_passage), not_found."""
     quote = quote.strip()
     if not 10 <= len(quote) <= 1000:
         raise ValueError("quote must be 10-1000 characters")

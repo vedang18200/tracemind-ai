@@ -32,7 +32,6 @@ def make_propose(factory):
 def make_gate(factory):
     @node("approval_gate")
     async def gate(state):
-        # On resume this node re-runs from the top, so everything before interrupt() must be side-effect free.
         ap = await get_approval(factory, state["approval_id"] or "")
         if ap is None or ap.task_id != state["task_id"]:
             return fail(state, "approval_gate", "approval_missing", "no matching approval for this task")

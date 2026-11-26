@@ -6,7 +6,6 @@ from tracemind.config import settings
 
 
 def to_psycopg_dsn(url: str) -> str:
-    """SQLAlchemy URLs carry a driver suffix that plain psycopg doesn't accept."""
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
 
 

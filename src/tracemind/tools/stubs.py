@@ -1,4 +1,3 @@
-# tools/stubs.py
 import hashlib
 from pydantic import BaseModel
 

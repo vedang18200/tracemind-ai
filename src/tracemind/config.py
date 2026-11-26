@@ -1,4 +1,3 @@
-# config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -11,7 +10,7 @@ class Settings(BaseSettings):
     max_research_rounds: int = 2
     max_tool_retries: int = 2
     task_timeout_seconds: int = 600
-    unsupported_ratio_threshold: float = 0.3   # above this, trigger targeted research
+    unsupported_ratio_threshold: float = 0.3   
     max_sources: int = 20
     max_request_chars: int = 4000
     llm_model: str = ""
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     allow_self_approval: bool = False
     allowed_recipient_domains: list[str] = [] 
     llm_model_strong: str = ""
-    # Hosted MCP server (Streamable HTTP)
+    # Hosted MCP server 
     mcp_url: str = ""                          # client side: use a remote server instead of stdio
     mcp_http_host: str = "127.0.0.1"
     mcp_http_port: int = 8000

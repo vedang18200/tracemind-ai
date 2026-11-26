@@ -10,7 +10,6 @@ def make_supervisor(llm: LLM):
     async def supervisor(state):
         plan = await llm.structured(system=system, user=state["user_request"], schema=SupervisorPlan)
 
-        # Validation happens in code; the model's output is never trusted as-is.
         if plan.task_type == "unsupported":
             return fail(state, "planning", "unsupported_task", "Request is not a supported workflow")
         if not plan.steps:

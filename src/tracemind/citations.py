@@ -1,16 +1,3 @@
-"""Check whether a quoted passage really appears in a page's text.
-
-Pure functions, no I/O, so the matching rules are easy to test. Used by the
-`verify_citation` MCP tool.
-
-Match levels, strictest first:
-  exact_match       same characters, only whitespace differences
-  normalized_match  same text after Unicode NFKC, case folding, and unifying
-                    curly quotes / dashes / ellipses (typical copy-paste noise)
-  close_match       not present, but a passage is >= CLOSE_THRESHOLD similar:
-                    likely paraphrased, truncated or altered
-  not_found         nothing similar enough
-"""
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -37,14 +24,9 @@ def _norm_char(c: str, fold: bool) -> str:
 
 
 def _normalize_with_map(text: str, fold: bool) -> tuple[str, list[int]]:
-    """Normalize text and keep, for each output char, the index of the source char.
-
-    The map lets us report context from the ORIGINAL page text even when the match
-    was found in the folded version.
-    """
     out: list[str] = []
     idx: list[int] = []
-    prev_space = True                     # also strips leading whitespace
+    prev_space = True                     
     for i, ch in enumerate(text):
         for c in _norm_char(ch, fold):
             if c.isspace():
@@ -72,7 +54,6 @@ def _context(original: str, start: int, end: int) -> str:
 
 
 def _find(page: str, quote: str, fold: bool) -> tuple[int, int] | None:
-    """Return (start, end) in the ORIGINAL page text, or None."""
     norm_page, idx = _normalize_with_map(page, fold)
     norm_quote = _normalize(quote, fold)
     pos = norm_page.find(norm_quote)
@@ -82,7 +63,6 @@ def _find(page: str, quote: str, fold: bool) -> tuple[int, int] | None:
 
 
 def _closest(page: str, quote: str) -> tuple[float, int, int]:
-    """Best-matching passage by word overlap. Returns (similarity, start, end) in original text."""
     norm_page, idx = _normalize_with_map(page, fold=True)
     page_words = [(m.group(), m.start(), m.end()) for m in re.finditer(r"\S+", norm_page)]
     quote_words = _normalize(quote, fold=True).split()
@@ -95,7 +75,6 @@ def _closest(page: str, quote: str) -> tuple[float, int, int]:
     if anchor.size == 0:
         return 0.0, 0, 0
 
-    # Align a quote-sized window on the anchor, then nudge it a few words either way.
     base = anchor.a - anchor.b
     n = len(quote_words)
     best = (0.0, 0, 0)
@@ -112,7 +91,6 @@ def _closest(page: str, quote: str) -> tuple[float, int, int]:
 
 
 def check_quote(page_text: str, quote: str) -> dict:
-    """Classify how well `quote` is supported by `page_text`."""
     hit = _find(page_text, quote, fold=False)
     if hit:
         return {"status": "exact_match", "similarity": 1.0, "context": _context(page_text, *hit)}

@@ -6,7 +6,7 @@ from tracemind.schemas import AnalysisResult
 
 
 def make_analyst(llm: LLM):
-    system = load_prompt("v2_analyst")   # use "v1_analyst" if you never created v2
+    system = load_prompt("v2_analyst")   
 
     @node("analysis")
     async def analyst(state):

@@ -116,8 +116,6 @@ async def decide(factory, *, approval_id: str, reviewer_id: str, decision: str, 
 
 
 async def execute_send_report(factory, *, approval_id: str, action: dict, body: str):
-    """Sends only if the DB says approved AND the action and body match what was approved.
-    Returns (outbox_row, created). created is False when this was a duplicate."""
     h = canonical_hash(action)
     error: ApprovalError | None = None
     msg: OutboxMessage | None = None
