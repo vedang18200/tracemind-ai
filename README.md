@@ -2,8 +2,8 @@
 
 **A multi-agent research system that turns a question into a cited competitor-analysis report, with tools served over MCP and a human approval gate before anything leaves the system.**
 
-> **Demo video:** _coming soon_  
-> **Live MCP server:** _coming soon_  
+> **Video overview:** [Watch the 2-minute walkthrough](https://notebooklm.link.google/QOHeEj9ZwKXV)  
+> **Live MCP server:** [`https://tracemind-mcp.onrender.com/mcp`](#try-the-mcp-server)  
 > **Stack:** Python, LangGraph, MCP, Postgres, Docker
 
 Ask: _"Research the top five AI interview platforms, compare their pricing and features, identify market gaps, and generate a competitor analysis report with sources."_
@@ -64,22 +64,26 @@ flowchart LR
 
 ## Try the MCP server
 
-The server exposes two tools: `search_web(query, max_results)` and `fetch_page(url)`.
+**Live endpoint:** `https://tracemind-mcp.onrender.com/mcp` (open demo, rate limited)
+
+It exposes two tools: `search_web(query, max_results)` and `fetch_page(url)`. The server runs on Render's free tier, so the first request after an idle period can take 30-60 seconds while it wakes up.
 
 **MCP Inspector** (no install):
 ```bash
 npx @modelcontextprotocol/inspector
 ```
-Choose transport **Streamable HTTP**, URL `https://<your-host>/mcp`, and add the header `Authorization: Bearer <token>` if the server has a token.
+Choose transport **Streamable HTTP** and URL `https://tracemind-mcp.onrender.com/mcp`, then Connect → Tools → List Tools.
+
+Things to try:
+- `fetch_page` with `https://example.com/`: returns the page title and text
+- `fetch_page` with `http://169.254.169.254/latest/meta-data/`: blocked (cloud metadata / SSRF)
+- `fetch_page` with `http://127.0.0.1/` or `file:///etc/passwd`: blocked
 
 **Cursor** (`~/.cursor/mcp.json`):
 ```json
 {
   "mcpServers": {
-    "tracemind": {
-      "url": "https://<your-host>/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
-    }
+    "tracemind": { "url": "https://tracemind-mcp.onrender.com/mcp" }
   }
 }
 ```
@@ -88,18 +92,14 @@ Choose transport **Streamable HTTP**, URL `https://<your-host>/mcp`, and add the
 ```json
 {
   "servers": {
-    "tracemind": {
-      "type": "http",
-      "url": "https://<your-host>/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
-    }
+    "tracemind": { "type": "http", "url": "https://tracemind-mcp.onrender.com/mcp" }
   }
 }
 ```
 
-Drop the `headers` block if the server runs without a token.
+**Claude Desktop:** Settings → Connectors → Add custom connector → `https://tracemind-mcp.onrender.com/mcp`.
 
-**Claude Desktop:** Settings → Connectors → add a custom connector with the URL (for an open demo server), or bridge it with `npx mcp-remote https://<your-host>/mcp`.
+Limits on the public demo: 20 requests/min per visitor, 60/min overall, 30 searches/day. For your own instance with a token, see [Deploy the MCP server](#deploy-the-mcp-server).
 
 ## Run locally
 
