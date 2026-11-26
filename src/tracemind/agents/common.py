@@ -3,6 +3,7 @@ from functools import wraps
 from pathlib import Path
 
 from tracemind.config import settings
+from langgraph.errors import GraphBubbleUp
 
 PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -25,6 +26,8 @@ def node(stage: str):
                 return fail(state, stage, "step_limit", "max_agent_steps exceeded")
             try:
                 update = await fn(state)
+            except GraphBubbleUp:
+                raise
             except Exception as e:
                 return fail(state, stage, "node_exception", f"{type(e).__name__}: {e}")
             if update.get("status") == "failed":

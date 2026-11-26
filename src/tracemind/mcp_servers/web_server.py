@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from urllib.parse import urljoin
 
 from tracemind.config import settings
-from tracemind.security.url_policy import validate_url
+from tracemind.security.url_policy import pinned_transport, validate_url
 
 mcp = FastMCP("tracemind-web")
 
@@ -41,7 +41,9 @@ async def fetch_page(url: str) -> dict:
     """Fetch a public web page. Returns {"url", "title", "text", "truncated"}."""
     current = url
     async with httpx.AsyncClient(
-        follow_redirects=False,                       
+        transport=pinned_transport(),     # re-validates the IP at connect time (DNS rebinding)
+        trust_env=False,                  # no env proxies: they would bypass the pinned transport
+        follow_redirects=False,
         timeout=settings.fetch_timeout_seconds,
         headers={"User-Agent": "TraceMind/0.1 (research bot)"},
     ) as client:

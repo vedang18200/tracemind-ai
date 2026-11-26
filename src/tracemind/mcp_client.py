@@ -144,3 +144,33 @@ async def connect_stdio(command: str | None = None, args: list[str] | None = Non
             except Exception as e:
                 raise ToolError("unavailable", f"MCP server failed to start: {e}")
             yield client
+
+
+@asynccontextmanager
+async def connect_http(url: str | None = None, token: str | None = None):
+    """Connect to a hosted TraceMind MCP server over Streamable HTTP."""
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+    from mcp.shared._httpx_utils import create_mcp_http_client
+
+    url = url or settings.mcp_url
+    if not url:
+        raise ToolError("unavailable", "no MCP url configured (set MCP_URL)")
+    token = token if token is not None else settings.mcp_auth_token
+    headers = {"Authorization": f"Bearer {token}"} if token else None
+
+    async with create_mcp_http_client(headers=headers) as http:
+        async with streamable_http_client(url, http_client=http) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                try:
+                    await session.initialize()
+                    client = MCPToolClient(session)
+                    await client.discover()
+                except Exception as e:
+                    raise ToolError("unavailable", f"cannot reach MCP server at {url}: {e}")
+                yield client
+
+
+def connect():
+    """Remote server if MCP_URL is set, otherwise spawn the local stdio server."""
+    return connect_http() if settings.mcp_url else connect_stdio()

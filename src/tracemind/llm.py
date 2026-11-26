@@ -1,7 +1,9 @@
-
+# llm.py
+import json
 from typing import Protocol, TypeVar
-from pydantic import BaseModel
-from pydantic import ValidationError
+
+from pydantic import BaseModel, ValidationError
+
 from tracemind.config import settings
 
 T = TypeVar("T", bound=BaseModel)
@@ -34,11 +36,33 @@ class FakeLLM:
         )
         return r
 
+
+def _coerce(data, input_schema: dict):
+    """Repair a known weak-model quirk: lists/objects returned as JSON strings.
+    Only touches fields the schema says are array/object. Validation still runs after."""
+    if not isinstance(data, dict):
+        return data
+    props = input_schema.get("properties", {})
+    decoder = json.JSONDecoder()
+    out = {}
+    for k, v in data.items():
+        if isinstance(v, str) and props.get(k, {}).get("type") in ("array", "object"):
+            s = v.lstrip()
+            if s[:1] in ("[", "{"):
+                try:
+                    v, _ = decoder.raw_decode(s)    # first JSON value, ignores trailing junk
+                except ValueError:
+                    pass
+        out[k] = v
+    return out
+
+
 class AnthropicLLM:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         from anthropic import AsyncAnthropic
         self.client = AsyncAnthropic(api_key=api_key or settings.llm_api_key)
         self.model = model or settings.llm_model
+        self.usage = {"input": 0, "output": 0}
 
     async def structured(self, *, system: str, user: str, schema: type[T]) -> T:
         tool = {
@@ -71,7 +95,7 @@ class AnthropicLLM:
                 last_err = RuntimeError("model returned no tool call")
                 continue
             try:
-                return schema.model_validate(block.input)
+                return schema.model_validate(_coerce(block.input, tool["input_schema"]))
             except ValidationError as e:
                 last_err = e
                 messages = [{"role": "user", "content": (
@@ -81,7 +105,8 @@ class AnthropicLLM:
         raise RuntimeError(f"structured output failed for {schema.__name__}: {last_err}")
 
 
-def get_llm() -> LLM:
+def get_llm(strong: bool = False) -> LLM:
     if settings.llm_provider == "anthropic":
-        return AnthropicLLM()
+        model = (settings.llm_model_strong if strong else "") or settings.llm_model
+        return AnthropicLLM(model=model)
     raise ValueError(f"unknown llm_provider: {settings.llm_provider}")

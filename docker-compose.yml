@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tracemind
+      POSTGRES_PASSWORD: tracemind      
+      POSTGRES_DB: tracemind
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracemind"]
+      interval: 3s
+      retries: 10
+volumes:
+  pgdata:

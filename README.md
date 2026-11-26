@@ -1,0 +1,143 @@
+# TraceMind
+
+**A multi-agent research system that turns a question into a cited competitor-analysis report, with tools served over MCP and a human approval gate before anything leaves the system.**
+
+> 🎥 **Demo video:** _add link_ · 🔌 **Live MCP server:** `https://<your-host>/mcp` · 💻 **Stack:** Python · LangGraph · MCP · Postgres · Docker
+
+Ask: _"Research the top five AI interview platforms, compare their pricing and features, identify market gaps, and generate a competitor analysis report with sources."_
+
+TraceMind plans the work, searches and reads the web through its own MCP server, extracts claims that are **grounded in verbatim page excerpts**, verifies them, loops back for more research when too many claims are weak, writes a report where every claim carries a citation, and pauses for a **reviewer's approval** before emailing it.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U([User request]) --> V[validate]
+    V --> S[Supervisor<br/><sub>plan + search queries</sub>]
+    S --> R[Researcher]
+    R --> A[Analyst<br/><sub>platforms, pricing, gaps</sub>]
+    A --> VF[Verifier]
+    VF -->|unverified ratio > 30%<br/>and rounds left| R
+    VF --> RP[Reporter<br/><sub>cited Markdown</sub>]
+    RP --> OV[output validation]
+    OV -->|deliver_to set| P[propose action]
+    OV --> F([finalize])
+    P --> G{{Approval gate<br/>interrupt}}
+    G -->|approved| X[execute send]
+    G -->|rejected| F
+    X --> F
+
+    subgraph MCP["MCP server (stdio or Streamable HTTP)"]
+        T1[search_web]
+        T2[fetch_page<br/><sub>SSRF-guarded</sub>]
+    end
+    R <-->|MCPToolClient<br/>policy · schema check · retries · audit| MCP
+
+    subgraph PG[(Postgres)]
+        CK[LangGraph checkpoints]
+        AP[approvals · outbox · audit log]
+    end
+    G -.-> PG
+    X -.-> PG
+```
+
+| Layer | What it does |
+|---|---|
+| **Orchestration** (`graph.py`) | LangGraph state machine with conditional routing, a bounded research loop (`max_research_rounds`) and a global step limit so a run can't spin forever. |
+| **Agents** (`agents/`) | Supervisor, Researcher, Analyst, Verifier, Reporter. Each returns **Pydantic-validated structured output**; invalid output is retried with the validation error fed back. Prompts are versioned files (`prompts/v1_*.md` … `v3_*.md`). |
+| **MCP server** (`mcp_servers/`) | `search_web` and `fetch_page` exposed as MCP tools. Runs over **stdio** for local use or **Streamable HTTP** for hosting, the same tools either way. |
+| **MCP client** (`mcp_client.py`) | Per-agent tool allow-list, JSON-schema validation of arguments before the call, timeout + retry with backoff for transient failures only, and a per-invocation audit record (tool, agent, status, latency, attempts). |
+| **Human-in-the-loop** (`approvals.py`, `agents/delivery.py`) | Outbound actions become an approval row pinned to a **SHA-256 of the exact report**. The graph `interrupt()`s and resumes from a Postgres checkpoint; execution re-checks the DB, so a tampered report or replayed decision is refused. |
+
+## Engineering highlights
+
+- **Grounded claims, not hallucinated ones.** The researcher drops any finding whose excerpt isn't literally present in the fetched page, and output validation rejects a report with missing sections, leftover citation markers or no citations.
+- **SSRF-safe fetching.** `fetch_page` resolves the host and refuses private, loopback, link-local and cloud-metadata addresses (e.g. `169.254.169.254`), re-validates on every redirect, allows only `http/https` on ports 80/443, and caps body size and content types. The check runs **at connect time** inside a custom network backend that dials the vetted IP literal, so DNS-rebinding (public answer to the check, private answer to the socket) can't slip through, while TLS still verifies the real hostname.
+- **Least privilege.** The tool server process only receives the search key, never the LLM key. `send_report` is a protected tool that no agent can call directly; it only runs through the approval path.
+- **Approval integrity.** No self-approval (configurable), reviewer role check, row lock on decisions, replay rejection, idempotent outbox insert, and every decision and blocked execution written to an audit log.
+- **Hosted MCP hardening.** Optional bearer token (constant-time compare), per-IP and global rate limits, DNS-rebinding protection via Host allow-list, stateless HTTP so it scales horizontally, and a non-root container.
+- **Failure isolation.** Every node is wrapped so an exception becomes a recorded failed state instead of a crash, and one bad page never kills a research round.
+
+## Try the MCP server
+
+The server exposes two tools: `search_web(query, max_results)` and `fetch_page(url)`.
+
+**MCP Inspector** (no install):
+```bash
+npx @modelcontextprotocol/inspector
+```
+Choose transport **Streamable HTTP**, URL `https://<your-host>/mcp`, and add the header `Authorization: Bearer <token>` if the server has a token.
+
+**Cursor** (`~/.cursor/mcp.json`) / **VS Code** (`.vscode/mcp.json`, key `servers` + `"type": "http"`):
+```json
+{
+  "mcpServers": {
+    "tracemind": {
+      "url": "https://<your-host>/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+**Claude Desktop:** Settings → Connectors → add a custom connector with the URL (for an open demo server), or bridge it with `npx mcp-remote https://<your-host>/mcp`.
+
+## Run locally
+
+Requires Python 3.11+ and Docker.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env          # fill in keys
+docker compose up -d db       # Postgres for checkpoints + approvals
+pytest -q                     # Postgres tests auto-skip if the DB is down
+```
+
+**MCP server over HTTP**
+```bash
+python -m tracemind.mcp_servers.http_app      # http://127.0.0.1:8000/mcp, health at /healthz
+```
+
+**Full agent pipeline** (needs `LLM_API_KEY` and `TAVILY_API_KEY`)
+```bash
+python scripts/run_demo.py --live
+MCP_URL=http://127.0.0.1:8000/mcp python scripts/run_demo.py --live   # use the HTTP server instead of stdio
+```
+
+**Human-in-the-loop demo**: `scripts/hitl_demo.py` runs a task to the approval gate, then lets a reviewer approve or reject and resumes it from the checkpoint.
+
+## Deploy the MCP server
+
+The `Dockerfile` builds only the MCP server: no LLM key needed, non-root, health-checked.
+
+```bash
+docker build -t tracemind-mcp .
+docker run -p 8000:8000 -e TAVILY_API_KEY=... -e MCP_AUTH_TOKEN=... \
+  -e 'MCP_ALLOWED_HOSTS=["your-host.example.com"]' tracemind-mcp
+```
+
+| Setting | Purpose |
+|---|---|
+| `MCP_AUTH_TOKEN` | Bearer token. Leave empty only for an open demo. |
+| `MCP_ALLOWED_HOSTS` | Your public hostname(s); requests with other `Host` headers get `421`. |
+| `MCP_RATE_LIMIT_PER_MINUTE` / `MCP_GLOBAL_RATE_LIMIT_PER_MINUTE` | Per-IP and whole-instance limits. The global cap protects your search-API quota. |
+| `MCP_TRUST_PROXY` | `true` behind a load balancer so the real client IP (last `X-Forwarded-For` hop) is rate-limited. |
+
+Hosting options: any container host works (Render, Fly.io, AWS App Runner, ECS Fargate). Rate limits are in-memory per instance; when running several replicas, also add throttling at the gateway or load balancer.
+
+## Project layout
+
+```
+src/tracemind/
+  graph.py            LangGraph wiring and routing
+  agents/             supervisor, researcher, analyst, verifier, reporter, delivery, lifecycle
+  prompts/            versioned system prompts
+  mcp_servers/        web_server.py (tools, stdio)  ·  http_app.py (Streamable HTTP, auth, rate limit)
+  mcp_client.py       policy-checked, schema-validated, retrying MCP client (stdio + HTTP)
+  security/           URL / SSRF policy
+  approvals.py, db.py, checkpoint.py   approval workflow, models, Postgres checkpointer
+tests/                unit + integration tests (MCP over stdio and HTTP, SSRF, approvals, routing)
+```

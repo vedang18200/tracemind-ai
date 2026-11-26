@@ -26,5 +26,18 @@ class Settings(BaseSettings):
     mcp_retry_backoff_seconds: float = 0.5
     max_findings_per_page: int = 6
     max_total_findings: int = 45
+    database_url: str = "postgresql+psycopg://tracemind:tracemind@localhost:5432/tracemind"
+    allow_self_approval: bool = False
+    allowed_recipient_domains: list[str] = [] 
+    llm_model_strong: str = ""
+    # Hosted MCP server (Streamable HTTP)
+    mcp_url: str = ""                          # client side: use a remote server instead of stdio
+    mcp_http_host: str = "127.0.0.1"
+    mcp_http_port: int = 8000
+    mcp_auth_token: str = ""                   # empty = open server (rate limit still applies)
+    mcp_allowed_hosts: list[str] = []          # public hostnames, e.g. ["tracemind-mcp.onrender.com"]
+    mcp_rate_limit_per_minute: int = 30        # per client IP
+    mcp_global_rate_limit_per_minute: int = 120  # whole instance; protects the search quota
+    mcp_trust_proxy: bool = False              # read client IP from X-Forwarded-For (behind a load balancer)
 
 settings = Settings()
